@@ -1,0 +1,99 @@
+#!/bin/zsh
+set -euo pipefail
+
+review_mode="${1:-flash}"
+case "$review_mode" in
+  flash)
+    review_agent="deepseek-zh-flash"
+    review_model="${DEEPSEEK_FLASH_MODEL:-deepseek/deepseek-v4-flash}"
+    review_label="DeepSeek V4 Flash"
+    review_timeout="${DEEPSEEK_FLASH_TIMEOUT:-240}"
+    ;;
+  pro)
+    review_agent="deepseek-zh-pro"
+    review_model="${DEEPSEEK_PRO_MODEL:-deepseek/deepseek-v4-pro}"
+    review_label="DeepSeek V4 Pro"
+    review_timeout="${DEEPSEEK_PRO_TIMEOUT:-420}"
+    ;;
+  *)
+    print -u2 "用法：deepseek-review [flash|pro]，并从标准输入传入待审中文。"
+    exit 2
+    ;;
+esac
+
+if [[ -t 0 ]]; then
+  print -u2 "请从标准输入传入待审中文，不要把 API Key 作为参数。"
+  exit 2
+fi
+
+opencode_cli="${OPENCODE_BIN:-}"
+if [[ -z "$opencode_cli" ]]; then
+  opencode_cli="$(command -v opencode 2>/dev/null || true)"
+fi
+if [[ -z "$opencode_cli" && -x "$HOME/.opencode/bin/opencode" ]]; then
+  opencode_cli="$HOME/.opencode/bin/opencode"
+fi
+if [[ -z "$opencode_cli" || ! -x "$opencode_cli" ]]; then
+  print -u2 "未找到 OpenCode CLI；请把 opencode 加入 PATH，或设置 OPENCODE_BIN。"
+  exit 127
+fi
+
+jq_cli="$(command -v jq 2>/dev/null || true)"
+if [[ -z "$jq_cli" ]]; then
+  print -u2 "未找到 jq。"
+  exit 127
+fi
+
+umask 077
+review_tmp="$(mktemp -d "${TMPDIR:-/tmp}/codex-deepseek-review.XXXXXX")"
+trap '/bin/rm -rf -- "$review_tmp"' EXIT INT TERM
+review_input="$review_tmp/input.txt"
+review_events="$review_tmp/events.jsonl"
+review_errors="$review_tmp/stderr.log"
+/bin/cat > "$review_input"
+
+if [[ ! -s "$review_input" ]]; then
+  print -u2 "待审内容为空。"
+  exit 2
+fi
+
+/usr/bin/perl -e '$seconds = shift; alarm $seconds; exec @ARGV or exit 127' \
+  "$review_timeout" \
+  /usr/bin/env \
+  'OPENCODE_PERMISSION={"*":"deny"}' \
+  OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
+  OPENCODE_DISABLE_LSP_DOWNLOAD=true \
+  OPENCODE_DISABLE_CLAUDE_CODE=true \
+  "$opencode_cli" run \
+  --pure \
+  --format json \
+  --dir "$review_tmp" \
+  --agent "$review_agent" \
+  --model "$review_model" \
+  --file "$review_input" \
+  --title "Codex 中文审稿" \
+  "请严格按照审稿代理的固定格式审阅附件 input.txt。只输出审阅意见。" \
+  > "$review_events" 2> "$review_errors" || review_status="$?"
+
+review_status="${review_status:-0}"
+if (( review_status == 142 )); then
+  print -u2 "DeepSeek ${review_mode} 审稿超过本机等待上限，已停止；未自动重试。"
+  exit 124
+elif (( review_status != 0 )); then
+  print -u2 "OpenCode/DeepSeek 调用失败（退出码 ${review_status}）；未自动重试。"
+  exit "$review_status"
+fi
+
+if ! "$jq_cli" -e 'select(.type == "step_finish" and .part.reason == "stop")' "$review_events" >/dev/null 2>&1; then
+  print -u2 "DeepSeek 未返回完整完成标记；未自动重试。"
+  exit 70
+fi
+
+review_text="$("$jq_cli" -rs '[.[] | select(.type == "text" and .part.type == "text") | .part.text] | join("")' "$review_events")"
+if [[ -z "${review_text//[[:space:]]/}" ]]; then
+  print -u2 "DeepSeek 已结束，但审阅正文为空；未自动重试。"
+  exit 70
+fi
+
+print "【${review_label} 审阅意见】"
+print -r -- "$review_text"
