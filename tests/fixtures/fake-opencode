@@ -1,0 +1,36 @@
+#!/bin/zsh
+set -u
+
+scenario="${FAKE_OPENCODE_SCENARIO:-complete}"
+
+case "$scenario" in
+  complete|complete-exit-1)
+    print -r -- '{"type":"text","part":{"type":"text","text":"测试审阅正文"}}'
+    print -r -- '{"type":"step_finish","part":{"reason":"stop"}}'
+    if [[ "$scenario" == "complete-exit-1" ]]; then
+      exit 1
+    fi
+    exit 0
+    ;;
+  incomplete-exit-1)
+    print -r -- '{"type":"text","part":{"type":"text","text":"未完成正文"}}'
+    exit 1
+    ;;
+  sandbox-exit-1)
+    print -u2 'Unknown: FileSystem.open (/Users/test/.local/share/opencode/log/opencode.log)'
+    exit 1
+    ;;
+  assert-pro)
+    args=" $* "
+    if [[ "$args" != *' --agent deepseek-zh-pro '* || "$args" != *' --model deepseek/deepseek-v4-pro '* ]]; then
+      print -u2 "Pro 路由参数错误"
+      exit 64
+    fi
+    print -r -- '{"type":"text","part":{"type":"text","text":"Pro 路由正确"}}'
+    print -r -- '{"type":"step_finish","part":{"reason":"stop"}}'
+    ;;
+  *)
+    print -u2 "未知测试场景：$scenario"
+    exit 64
+    ;;
+esac

@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell syntax
+        run: |
+          zsh -n install.sh
+          zsh -n deepseek-chinese-review/scripts/deepseek-review
+          zsh -n deepseek-chinese-review/scripts/review_file.sh
+          zsh -n deepseek-chinese-review/scripts/doctor.sh
+          zsh -n tests/run.sh
+          zsh -n tests/fixtures/fake-opencode
+      - name: Validate skill frontmatter
+        run: |
+          ruby -e 'require "yaml"; source=File.read(ARGV[0]); match=source.match(/\A---\s*\n(.*?)\n---\s*\n/m); abort "missing frontmatter" unless match; data=YAML.safe_load(match[1]); abort "missing name or description" unless data["name"] && data["description"]' deepseek-chinese-review/SKILL.md
+      - name: Run deterministic bridge tests
+        run: ./tests/run.sh
