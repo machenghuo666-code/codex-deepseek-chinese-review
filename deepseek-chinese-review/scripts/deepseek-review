@@ -76,6 +76,21 @@ fi
   > "$review_events" 2> "$review_errors" || review_status="$?"
 
 review_status="${review_status:-0}"
+
+# OpenCode may emit a complete result and then exit nonzero during teardown.
+# A verified stop event plus non-empty text is authoritative.
+review_text=""
+if [[ -s "$review_events" ]] && \
+  "$jq_cli" -s -e 'any(.[]; .type == "step_finish" and .part.reason == "stop")' "$review_events" >/dev/null 2>&1; then
+  review_text="$("$jq_cli" -rs '[.[] | select(.type == "text" and .part.type == "text") | .part.text] | join("")' "$review_events" 2>/dev/null || true)"
+fi
+
+if [[ -n "${review_text//[[:space:]]/}" ]]; then
+  print "【${review_label} 审阅意见】"
+  print -r -- "$review_text"
+  exit 0
+fi
+
 if (( review_status == 142 )); then
   print -u2 "DeepSeek ${review_mode} 审稿超过本机等待上限，已停止；未自动重试。"
   exit 124
@@ -84,16 +99,5 @@ elif (( review_status != 0 )); then
   exit "$review_status"
 fi
 
-if ! "$jq_cli" -e 'select(.type == "step_finish" and .part.reason == "stop")' "$review_events" >/dev/null 2>&1; then
-  print -u2 "DeepSeek 未返回完整完成标记；未自动重试。"
-  exit 70
-fi
-
-review_text="$("$jq_cli" -rs '[.[] | select(.type == "text" and .part.type == "text") | .part.text] | join("")' "$review_events")"
-if [[ -z "${review_text//[[:space:]]/}" ]]; then
-  print -u2 "DeepSeek 已结束，但审阅正文为空；未自动重试。"
-  exit 70
-fi
-
-print "【${review_label} 审阅意见】"
-print -r -- "$review_text"
+print -u2 "DeepSeek 未返回完整完成标记和非空正文；未自动重试。"
+exit 70

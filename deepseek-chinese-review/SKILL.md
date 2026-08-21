@@ -10,7 +10,7 @@ description: 当用户说“DeepSeek”“deepseek”“DeepSeek Pro”，或明
 ## 路由
 
 - 用户只说 `DeepSeek`、`deepseek`、`DP` 或“让 DeepSeek 看看”时，使用 `flash`。
-- 用户明确说 `DeepSeek Pro`、`Pro 深度复核` 或“用 Pro”时，使用 `pro`。
+- 用户明确说 `DeepSeek Pro`、`Pro 深度复核`、`V4 Pro` 或“用 Pro”时，必须使用 `pro`；不得被默认 `flash` 路由覆盖。
 - 不要打开浏览器、DeepSeek 网站或其他聊天网页，不要要求网页登录。
 - 如果本机桥接不可用，报告本地错误并停止；不得换成网页 DeepSeek，也不得用 Codex 自己冒充 DeepSeek 的意见。
 
@@ -36,6 +36,12 @@ description: 当用户说“DeepSeek”“deepseek”“DeepSeek Pro”，或明
 
 Pro 模式把 `flash` 改成 `pro`。不要把文件内容拼接进 Shell 命令。
 
+明确要求 Pro 时，实际命令的第一个参数必须是 `pro`：
+
+```zsh
+<skill-directory>/scripts/review_file.sh pro /absolute/path/to/draft.txt
+```
+
 ### 用户直接粘贴文本
 
 1. 用 `mktemp -d /private/tmp/codex-deepseek-skill.XXXXXX` 创建独立临时目录。
@@ -54,6 +60,7 @@ Pro 模式把 `flash` 改成 `pro`。不要把文件内容拼接进 Shell 命令
 ## 返回结果
 
 - 原样保留 `【DeepSeek V4 Flash 审阅意见】` 或 `【DeepSeek V4 Pro 审阅意见】` 标题。
+- 调用前确定一次模式；明确要求 Pro 时不得先调用 Flash。返回后核对标题与请求模式一致，不一致即报告路由错误，不得把 Flash 结果称为 Pro。
 - 明确说明这是 DeepSeek 返回的审阅意见。
 - 只有脚本成功返回且包含标题和正文时，才可称为审阅完成；否则不要自行补写或冒充结果。
 - 只有用户要求比较、采纳或修改时，Codex 才继续给出自己的判断或更改文件。
