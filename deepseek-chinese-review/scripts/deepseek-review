@@ -21,6 +21,13 @@ case "$review_mode" in
     ;;
 esac
 
+case "$review_timeout" in
+  ''|*[!0-9]*|0)
+    print -u2 "DeepSeek 等待上限必须是正整数秒。"
+    exit 2
+    ;;
+esac
+
 if [[ -t 0 ]]; then
   print -u2 "请从标准输入传入待审中文，不要把 API Key 作为参数。"
   exit 2
@@ -57,6 +64,20 @@ if [[ ! -s "$review_input" ]]; then
   exit 2
 fi
 
+max_input_bytes="${DEEPSEEK_MAX_INPUT_BYTES:-200000}"
+case "$max_input_bytes" in
+  ''|*[!0-9]*|0)
+    print -u2 "DEEPSEEK_MAX_INPUT_BYTES 必须是正整数。"
+    exit 2
+    ;;
+esac
+
+review_input_bytes="$(stat -f '%z' "$review_input")"
+if (( review_input_bytes > max_input_bytes )); then
+  print -u2 "待审内容超过 ${max_input_bytes} 字节；请缩小到明确需要审阅的内容。"
+  exit 3
+fi
+
 /usr/bin/perl -e '$seconds = shift; alarm $seconds; exec @ARGV or exit 127' \
   "$review_timeout" \
   /usr/bin/env \
@@ -89,6 +110,12 @@ if [[ -n "${review_text//[[:space:]]/}" ]]; then
   print "【${review_label} 审阅意见】"
   print -r -- "$review_text"
   exit 0
+fi
+
+if (( review_status != 0 )) && [[ -s "$review_errors" ]] && \
+  /usr/bin/grep -Eq 'FileSystem\.open \(.*/opencode/|Permission denied.*/opencode/|Operation not permitted.*/opencode/' "$review_errors"; then
+  print -u2 "本机 OpenCode 被 Codex 工作区沙箱阻止；请按 on-request 批准本次 DeepSeek 调用后，在沙箱外执行。此次尚未进入模型请求。"
+  exit 77
 fi
 
 if (( review_status == 142 )); then

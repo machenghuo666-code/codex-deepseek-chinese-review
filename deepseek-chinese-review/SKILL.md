@@ -27,6 +27,12 @@ description: 当用户说“DeepSeek”“deepseek”“DeepSeek Pro”，或明
 
 使用本 Skill 目录下的 `scripts/review_file.sh`。
 
+OpenCode 需要写入自己的本机状态目录并访问 DeepSeek API。在 Codex 的 `workspace-write` 模式下，调用脚本时必须使用 `exec_command` 的 `sandbox_permissions: "require_escalated"`，让用户按 `on-request` 方式批准本次调用。不要先在普通沙箱里试跑；那会在进入模型请求前因无法写入 `~/.local/share/opencode` 而失败。
+
+- 授权说明只写明“允许本次本机 OpenCode/DeepSeek 审稿调用”，不要申请更宽的文件或命令权限。
+- 如果用户拒绝授权，停止并说明尚未调用 DeepSeek。
+- 如果普通沙箱误跑后脚本明确报告“工作区沙箱阻止”，这属于启动前失败，不是模型失败；获得用户批准后可在沙箱外执行一次，不计作自动重试。
+
 ### 用户指定现有文本文件
 
 将模式和文件绝对路径分别作为参数传入：

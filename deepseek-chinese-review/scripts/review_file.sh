@@ -27,9 +27,17 @@ case "$input_name" in
     ;;
 esac
 
+max_input_bytes="${DEEPSEEK_MAX_INPUT_BYTES:-200000}"
+case "$max_input_bytes" in
+  ''|*[!0-9]*|0)
+    print -u2 "DEEPSEEK_MAX_INPUT_BYTES 必须是正整数。"
+    exit 2
+    ;;
+esac
+
 input_bytes="$(stat -f '%z' "$resolved_input")"
-if (( input_bytes > 200000 )); then
-  print -u2 "待审文件超过 200 KB；请缩小到明确需要审阅的内容。"
+if (( input_bytes > max_input_bytes )); then
+  print -u2 "待审文件超过 ${max_input_bytes} 字节；请缩小到明确需要审阅的内容。"
   exit 3
 fi
 
